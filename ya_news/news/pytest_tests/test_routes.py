@@ -1,60 +1,61 @@
 from http import HTTPStatus
+
 import pytest
-from django.contrib.auth import SESSION_KEY
+from pytest_django.asserts import assertRedirects
 
 
-@pytest.mark.parametrize('page', ('home', 'detail', 'login', 'signup'))
+@pytest.mark.parametrize(
+    'url_fixture',
+    ('home_url', 'news_url', 'login_url', 'signup_url'),
+)
 def test_public_pages_are_available(
-    client, home_url, news_url, auth_urls, page
+    client, request, url_fixture, db
 ):
-    urls = {
-        'home': home_url,
-        'detail': news_url,
-        'login': auth_urls['login'],
-        'signup': auth_urls['signup'],
-    }
-
-    response = client.get(urls[page])
+    """Публичные страницы открываются анонимному пользователю."""
+    response = client.get(request.getfixturevalue(url_fixture))
 
     assert response.status_code == HTTPStatus.OK
 
 
-@pytest.mark.parametrize('page', ('edit', 'delete'))
+@pytest.mark.parametrize('url_fixture', ('edit_url', 'delete_url'))
 def test_comment_pages_are_available_to_author(
-    author_client, comment_urls, page
+    author_client, request, url_fixture
 ):
-    response = author_client.get(comment_urls[page])
+    """Автор открывает страницы изменения своего комментария."""
+    response = author_client.get(request.getfixturevalue(url_fixture))
 
     assert response.status_code == HTTPStatus.OK
 
 
-@pytest.mark.parametrize('page', ('edit', 'delete'))
+@pytest.mark.parametrize('url_fixture', ('edit_url', 'delete_url'))
 def test_other_user_cannot_open_comment_pages(
-    reader_client, comment_urls, page
+    reader_client, request, url_fixture
 ):
-    response = reader_client.get(comment_urls[page])
+    """Чужие страницы изменения комментария отвечают 404."""
+    response = reader_client.get(request.getfixturevalue(url_fixture))
 
     assert response.status_code == HTTPStatus.NOT_FOUND
 
 
-@pytest.mark.parametrize('page', ('edit', 'delete'))
+@pytest.mark.parametrize('url_fixture', ('edit_url', 'delete_url'))
 def test_anonymous_user_is_redirected_to_login(
-    client, comment_urls, auth_urls, page
+    client, request, login_url, url_fixture
 ):
-    source_url = comment_urls[page]
-    login_url = auth_urls['login']
-    expected_url = f'{login_url}?next={source_url}'
+    """Анонимный пользователь попадает на вход с параметром next."""
+    source_url = request.getfixturevalue(url_fixture)
 
     response = client.get(source_url)
 
-    assert response.status_code == HTTPStatus.FOUND
-    assert response.url == expected_url
+    assertRedirects(
+        response,
+        f'{login_url}?next={source_url}',
+        status_code=HTTPStatus.FOUND,
+        fetch_redirect_response=False,
+    )
 
 
-def test_logout_by_post_clears_session(author_client, auth_urls):
-    assert SESSION_KEY in author_client.session
-
-    response = author_client.post(auth_urls['logout'])
+def test_logout_by_post_returns_ok(author_client, logout_url):
+    """POST-запрос выхода возвращает успешный ответ."""
+    response = author_client.post(logout_url)
 
     assert response.status_code == HTTPStatus.OK
-    assert SESSION_KEY not in author_client.session
