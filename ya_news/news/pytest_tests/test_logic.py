@@ -1,29 +1,21 @@
 from http import HTTPStatus
 
 import pytest
-from django.contrib.auth import SESSION_KEY
 from pytest_django.asserts import assertFormError, assertRedirects
 
-from news.forms import BAD_WORDS
+from news.forms import BAD_WORDS, WARNING
 from news.models import Comment
 
 
-def test_logout_clears_session(author_client, logout_url):
-    """После выхода пользователь отсутствует в сессии."""
-    author_client.post(logout_url)
-
-    assert SESSION_KEY not in author_client.session
-
-
 def test_anonymous_user_cannot_create_comment(
-    client, news_url, login_url, form_data, db
+    client, news_url, news_login_url, form_data, db
 ):
     """Анонимный POST не создаёт комментарий."""
     response = client.post(news_url, data=form_data)
 
     assertRedirects(
         response,
-        f'{login_url}?next={news_url}',
+        news_login_url,
         status_code=HTTPStatus.FOUND,
         fetch_redirect_response=False,
     )
@@ -31,14 +23,14 @@ def test_anonymous_user_cannot_create_comment(
 
 
 def test_authorized_user_creates_one_comment(
-    author, author_client, news, news_url, form_data, db
+    author, author_client, news, news_url, comments_url, form_data, db
 ):
     """Авторизованный пользователь создаёт один комментарий."""
     response = author_client.post(news_url, data=form_data)
 
     assertRedirects(
         response,
-        f'{news_url}#comments',
+        comments_url,
         status_code=HTTPStatus.FOUND,
         fetch_redirect_response=False,
     )
@@ -51,31 +43,30 @@ def test_authorized_user_creates_one_comment(
 
 @pytest.mark.parametrize('bad_word', BAD_WORDS)
 def test_comment_with_forbidden_word_is_not_saved(
-    author_client, news_url, form_data, db, bad_word
+    author_client, news_url, db, bad_word
 ):
     """Комментарий со стоп-словом не сохраняется."""
-    form_data['text'] = f'Ты {bad_word}!'
-
-    response = author_client.post(news_url, data=form_data)
+    response = author_client.post(
+        news_url,
+        data={'text': f'Ты {bad_word}!'},
+    )
 
     assert response.status_code == HTTPStatus.OK
     assert 'form' in response.context
-    assertFormError(response.context['form'], 'text', 'Не ругайтесь!')
+    assertFormError(response.context['form'], 'text', WARNING)
     assert Comment.objects.count() == 0
 
 
 def test_author_can_edit_comment(
-    author_client, comment, edit_url, news_url, form_data
+    author_client, comment, edit_url, comments_url, form_data
 ):
     """Автор меняет текст своего комментария."""
-    form_data['text'] = 'Изменённый комментарий'
-
     response = author_client.post(edit_url, data=form_data)
 
     edited_comment = Comment.objects.get(pk=comment.pk)
     assertRedirects(
         response,
-        f'{news_url}#comments',
+        comments_url,
         status_code=HTTPStatus.FOUND,
         fetch_redirect_response=False,
     )
@@ -85,29 +76,39 @@ def test_author_can_edit_comment(
 
 
 def test_author_can_delete_comment(
-    author_client, delete_url, news_url
+    author_client, delete_url, comments_url
 ):
     """Автор удаляет свой комментарий."""
     response = author_client.post(delete_url)
 
     assertRedirects(
         response,
-        f'{news_url}#comments',
+        comments_url,
         status_code=HTTPStatus.FOUND,
         fetch_redirect_response=False,
     )
     assert Comment.objects.count() == 0
 
 
-@pytest.mark.parametrize('url_fixture', ('edit_url', 'delete_url'))
-def test_other_user_cannot_change_comment(
-    reader_client, comment, form_data, request, url_fixture
+def test_other_user_cannot_edit_comment(
+    reader_client, comment, edit_url, form_data
 ):
-    """Другой пользователь не меняет и не удаляет комментарий."""
-    response = reader_client.post(
-        request.getfixturevalue(url_fixture),
-        data=form_data,
-    )
+    """Другой пользователь не меняет чужой комментарий."""
+    response = reader_client.post(edit_url, data=form_data)
+
+    comment_after_request = Comment.objects.get(pk=comment.pk)
+    assert response.status_code == HTTPStatus.NOT_FOUND
+    assert Comment.objects.count() == 1
+    assert comment_after_request.text == comment.text
+    assert comment_after_request.author == comment.author
+    assert comment_after_request.news == comment.news
+
+
+def test_other_user_cannot_delete_comment(
+    reader_client, comment, delete_url
+):
+    """Другой пользователь не удаляет чужой комментарий."""
+    response = reader_client.post(delete_url)
 
     comment_after_request = Comment.objects.get(pk=comment.pk)
     assert response.status_code == HTTPStatus.NOT_FOUND

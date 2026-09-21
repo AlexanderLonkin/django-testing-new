@@ -126,3 +126,27 @@ def signup_url():
 def logout_url():
     """Возвращает адрес выхода из аккаунта."""
     return reverse('users:logout')
+
+
+@pytest.fixture
+def news_login_url(login_url, news_url):
+    """Возвращает адрес входа с возвратом к новости."""
+    return f'{login_url}?next={news_url}'
+
+
+@pytest.fixture
+def edit_login_url(login_url, edit_url):
+    """Возвращает адрес входа с возвратом к редактированию."""
+    return f'{login_url}?next={edit_url}'
+
+
+@pytest.fixture
+def delete_login_url(login_url, delete_url):
+    """Возвращает адрес входа с возвратом к удалению."""
+    return f'{login_url}?next={delete_url}'
+
+
+@pytest.fixture
+def comments_url(news_url):
+    """Возвращает адрес блока комментариев новости."""
+    return f'{news_url}#comments'

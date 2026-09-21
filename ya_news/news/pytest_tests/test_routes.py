@@ -37,18 +37,22 @@ def test_other_user_cannot_open_comment_pages(
     assert response.status_code == HTTPStatus.NOT_FOUND
 
 
-@pytest.mark.parametrize('url_fixture', ('edit_url', 'delete_url'))
+@pytest.mark.parametrize(
+    ('url_fixture', 'redirect_url_fixture'),
+    (
+        ('edit_url', 'edit_login_url'),
+        ('delete_url', 'delete_login_url'),
+    ),
+)
 def test_anonymous_user_is_redirected_to_login(
-    client, request, login_url, url_fixture
+    client, request, url_fixture, redirect_url_fixture
 ):
     """Анонимный пользователь попадает на вход с параметром next."""
-    source_url = request.getfixturevalue(url_fixture)
-
-    response = client.get(source_url)
+    response = client.get(request.getfixturevalue(url_fixture))
 
     assertRedirects(
         response,
-        f'{login_url}?next={source_url}',
+        request.getfixturevalue(redirect_url_fixture),
         status_code=HTTPStatus.FOUND,
         fetch_redirect_response=False,
     )
