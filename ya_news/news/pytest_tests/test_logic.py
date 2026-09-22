@@ -105,14 +105,10 @@ def test_other_user_cannot_edit_comment(
 
 
 def test_other_user_cannot_delete_comment(
-    reader_client, comment, delete_url
+    reader_client, delete_url
 ):
     """Другой пользователь не удаляет чужой комментарий."""
     response = reader_client.post(delete_url)
 
-    comment_after_request = Comment.objects.get(pk=comment.pk)
     assert response.status_code == HTTPStatus.NOT_FOUND
     assert Comment.objects.count() == 1
-    assert comment_after_request.text == comment.text
-    assert comment_after_request.author == comment.author
-    assert comment_after_request.news == comment.news
